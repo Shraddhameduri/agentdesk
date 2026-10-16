@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from ..db import Approval, Order, Ticket
 from ..errors import APIError, ORDER_NOT_FOUND, TICKET_NOT_FOUND
+from ..providers import normalize_order_id
 
 
 @dataclass
@@ -30,7 +31,7 @@ class OrderLookupTool(BaseTool):
     description = "Look up an order by ID (ORD-1234). Read-only."
 
     def execute(self, session, args: dict) -> ToolResult:
-        order_id = str(args.get("order_id", "")).upper()
+        order_id = normalize_order_id(str(args.get("order_id", ""))) or str(args.get("order_id", "")).upper()
         order = session.get(Order, order_id)
         if order is None:
             raise APIError(ORDER_NOT_FOUND[0], f"Order {order_id} not found.", ORDER_NOT_FOUND[1])

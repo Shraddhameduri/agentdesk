@@ -11,7 +11,7 @@ LOG="/tmp/copilot_watchdog.log"
 if ! pgrep -f "[u]vicorn app.main:app --host 0.0.0.0 --port 8001" >/dev/null 2>&1; then
   # double-fork detach: subshell exits immediately, init adopts the grandchild
   # (setsid alone left the daemon as our child -> do_wait hang; use `;` not `&&`).
-  ( cd "$REPO/backend"; setsid nohup env API_KEY=demo-key LLM_PROVIDER=fake DEMO_MODE=true LOG_LEVEL=INFO ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001 > /tmp/copilot_api.log 2>&1 < /dev/null & )
+  ( cd "$REPO/backend"; setsid nohup env API_KEY=demo-key LLM_PROVIDER=ollama DEMO_MODE=false OLLAMA_MODEL=llama3.2:1b OLLAMA_BASE_URL=http://localhost:11434 LOG_LEVEL=INFO ../.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001 > /tmp/copilot_api.log 2>&1 < /dev/null & )
   sleep 8
 fi
 

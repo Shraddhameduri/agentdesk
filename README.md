@@ -2,11 +2,12 @@
 
 An AI support agent that doesn't just chat — it **acts** via tools, with a **human-in-the-loop approval gate** on every write action. Ask "Where is my order ORD-1002?" and it looks it up. Ask for a refund and it *drafts* the ticket, waits for your approval, and only then executes.
 
-**Live demo:** https://bd5fe888665027.lhr.life
+**Live demo:** https://54d1f6c038b735.lhr.life
 *(public URL via localhost.run tunnel; rotates on reconnect — current URL is always in `~/workspace/your_files/agentic-support-copilot-url.txt`)*
 
-> **Demo mode:** the public demo runs on a deterministic built-in provider (no API key, no external calls).
-> It demonstrates the full agent loop — routing, tools, approvals, streaming, RAG — with byte-identical results on every run. Set `LLM_PROVIDER=openai|ollama` for the real LLM path.
+> **Live provider:** the public demo runs on **Ollama `llama3.2:1b`** (free, local model — no API key, no external calls).
+> `llama3.2:1b` is a small 1B-parameter model: it writes natural answers over the knowledge base well, but it proved unreliable at tool-calling JSON — so **intent routing is deterministic** (the tested rule-based router plans every turn; the turn's provider line shows `rules`), while Ollama composes KB/general answers. Structured lookups (orders, tickets) and approvals always use deterministic templates so the demo can never contradict the database or invent citations. Honest trade-off, documented in Architecture above.
+> The deterministic fake provider remains for tests, evals, and offline runs — and as automatic fallback if Ollama is unreachable. Set `LLM_PROVIDER=openai` for the OpenAI path.
 
 ## Architecture
 
@@ -30,13 +31,14 @@ flowchart TD
     API --> ERR[error envelope +\nrequest-id logging]
 ```
 
-**Request flow** for one chat turn:
+**Request flow** for one chat turn (hybrid planning — deliberate, honest design):
 
 1. `POST /api/chat` → request-ID middleware attaches `X-Request-ID`, structured log line per request.
-2. Provider **plans** (tool + args) with exponential-backoff retries; on repeated failure it falls back to the fake provider; if everything fails → `503 PROVIDER_UNAVAILABLE` envelope (never a stack trace).
-3. Read tools execute immediately; `ticket_create` only **stages** a pending approval — the ticket is never created at this point.
-4. Provider **composes** the reply from tool results + retrieved KB snippets (with `[DOC-ID]` citations).
-5. `POST /api/chat/stream` streams the same result as SSE (`meta` → `token…` → `done`).
+2. A **deterministic intent router** plans the turn first (order/ticket ID lookups, write phrasings, no-order-ID clarification, greetings, KB search — 100% on the 24-case eval set). The 1B local LLM proved unreliable at tool-calling JSON (malformed tool names like `"order_lookup|null"`, dropped args, invented citations), so the LLM planner is only a fallback for messages the rules can't handle. The turn's reported provider is `"rules"` when the deterministic router planned it — visible per-turn in the UI.
+3. Deterministic **safety rails** validate any plan: invalid tool names are repaired, missing order/ticket IDs are extracted from the raw message (loose forms like `ord5678` are normalized to `ORD-5678`) or turned into a clarification asking for the ID.
+4. Read tools execute immediately; `ticket_create` only **stages** a pending approval — the ticket is never created at this point.
+5. **Composition:** structured tool results (order/ticket lookups) and approval drafts use deterministic templates so the agent can never contradict the database; the live LLM (Ollama `llama3.2:1b`) composes KB answers and open chat in natural language. On repeated LLM failure the turn degrades to the fake provider; if everything fails → `503 PROVIDER_UNAVAILABLE` envelope (never a stack trace).
+6. `POST /api/chat/stream` streams the same result as SSE (`meta` → `token…` → `done`).
 
 ## Features
 
@@ -162,13 +164,13 @@ Measured on this VM (SQLite, fake provider, `scripts/bench.py`, 60 chat requests
 | Approval-gate compliance | **100%** (6/6 — write intents staged, zero tickets created pre-approval) |
 | Groundedness (KB answers cite the right doc + key phrase) | **100%** (9/9) |
 
-Test suite: **38 passed** (`pytest tests/`) — routing, tools, approval flow, RAG + cache, API endpoints, error envelopes, provider-failure fallback.
+Test suite: **63 passed** (`pytest tests/`) — routing, tools, approval flow, RAG + cache, API endpoints, error envelopes, provider-failure fallback, plus live-demo feedback regressions (order-ID clarification, loose ID normalization, return-intent routing, KB answer quality).
 
 ## Deployment
 
-- **Live demo:** https://bd5fe888665027.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
+- **Live demo:** https://54d1f6c038b735.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
 - Runs from one process: `uvicorn app.main:app` serves the React build from `/` and the API under `/api`.
-- `DEMO_MODE=true` forces the fake provider for the public demo; the UI shows a "DEMO MODE" badge.
+- `DEMO_MODE=false` + `LLM_PROVIDER=ollama` (model `llama3.2:1b`, the only chat model installed) on the live demo; the UI badge reads the actual provider from `/ready` and shows "LIVE — Ollama llama3.2:1b (local model)". If Ollama is unreachable, every turn degrades to the fake provider via the existing retry/fallback chain (verified: the fallback path is exercised in tests).
 - `docker-compose.yml` adds Postgres 16 + pgvector for the production RAG path (server-side vector search replaces the in-memory index — same `Retriever` interface).
 
 ## Trade-offs & limitations (honest)

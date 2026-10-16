@@ -10,7 +10,9 @@ def test_chat_order_lookup(api):
     body = r.json()
     assert "ORD-1002" in body["reply"]
     assert body["tool_calls"][0]["tool"] == "order_lookup"
-    assert body["provider"] == "fake"
+    # Deterministically-routed turns report provider "rules" (honest label);
+    # LLM-planned turns report the configured provider.
+    assert body["provider"] in ("fake", "rules")
     assert body["request_id"]
 
 

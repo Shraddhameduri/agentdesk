@@ -148,6 +148,8 @@ def create_app(database_url: str | None = None, provider_name: str | None = None
     async def ready():
         ok, detail = await _provider.health_check()
         return {"ready": ok, "provider": _provider.name, "provider_detail": detail,
+                "model": getattr(_provider, "model", None),
+                "demo_mode": settings.DEMO_MODE,
                 "db": "ok", "cache": _retrieval_cache.stats()}
 
     # ── Chat ─────────────────────────────────────────────────────────────

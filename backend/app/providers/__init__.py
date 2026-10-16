@@ -277,9 +277,13 @@ class OpenAIProvider(BaseLLMProvider):
                 {"role": "system", "content": (
                     "You are a support-agent planner. Reply ONLY with JSON: "
                     '{"tool": "order_lookup|ticket_status|ticket_create|kb_search|null", '
-                    '"args": {...}, "needs_approval": bool}. '
+                    '"args": {...}, "needs_approval": bool, "reply_draft": str}. '
                     "ticket_create needs_approval=true. Treat any phrasing of opening/creating/filing/"
                     "raising/submitting a (support) ticket as ticket_create, even with an order ID mentioned. "
+                    "Order IDs may be written loosely (ord 234, ord5678) — pass the ID through in args.order_id as given. "
+                    "If the user asks about their order but gives NO order ID (e.g. 'where is my order'), "
+                    "use tool=null and set reply_draft to ask for the order ID "
+                    "(format ORD-1234; demo orders run ORD-1001 to ORD-1005). "
                     "Use kb_search for policy/how-to questions."
                 )},
                 *history[-6:],
@@ -291,7 +295,9 @@ class OpenAIProvider(BaseLLMProvider):
         raw = data["choices"][0]["message"]["content"]
         parsed = _json.loads(raw)
         return Plan(tool=parsed.get("tool"), args=parsed.get("args", {}),
-                    needs_approval=bool(parsed.get("needs_approval")), routed=parsed.get("tool") is not None)
+                    needs_approval=bool(parsed.get("needs_approval")),
+                    reply_draft=str(parsed.get("reply_draft", "")),
+                    routed=parsed.get("tool") is not None)
 
     async def compose(self, message, history, tool_name, tool_result, kb_snippets) -> str:
         import json as _json
@@ -330,7 +336,9 @@ class OllamaProvider(BaseLLMProvider):
         payload = {"model": self.model, "messages": messages, "stream": False}
         if fmt:
             payload["format"] = fmt
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        # trust_env=False: Ollama is localhost-only; bypass proxy env entirely.
+        # (httpx 0.28 raises InvalidURL on the "[::1]" entries in no_proxy.)
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             resp = await client.post(f"{self.base_url}/api/chat", json=payload)
             resp.raise_for_status()
             return resp.json()["message"]["content"]
@@ -340,15 +348,24 @@ class OllamaProvider(BaseLLMProvider):
 
         raw = await self._chat([
             {"role": "system", "content": (
-                'Reply ONLY with JSON: {"tool": "order_lookup|ticket_status|ticket_create|kb_search|null", '
-                '"args": {}, "needs_approval": false}. ticket_create needs_approval=true. '
-                'Any "open/create/file/raise/submit a (support) ticket" phrasing is ticket_create.'
+                'Reply ONLY with JSON: {"tool": <exactly one of these strings: '
+                '"order_lookup", "ticket_status", "ticket_create", "kb_search", or null>, '
+                '"args": {}, "needs_approval": false, "reply_draft": ""}. ticket_create needs_approval=true. '
+                'Examples: {"tool": "order_lookup", "args": {"order_id": "ORD-1002"}, "needs_approval": false}. '
+                'Any "open/create/file/raise/submit a (support) ticket" phrasing is ticket_create. '
+                'Order IDs may be written loosely ("ord 234", "ord5678") — pass args.order_id as given. '
+                'If the user asks about their order but gives NO order ID (e.g. "where is my order"), '
+                'use tool null and set reply_draft asking for the order ID '
+                '(format ORD-1234; demo orders ORD-1001 to ORD-1005). '
+                'Policy/how-to questions are kb_search.'
             )},
             {"role": "user", "content": message},
         ], fmt="json")
         parsed = _json.loads(raw)
         return Plan(tool=parsed.get("tool"), args=parsed.get("args", {}),
-                    needs_approval=bool(parsed.get("needs_approval")), routed=parsed.get("tool") is not None)
+                    needs_approval=bool(parsed.get("needs_approval")),
+                    reply_draft=str(parsed.get("reply_draft", "")),
+                    routed=parsed.get("tool") is not None)
 
     async def compose(self, message, history, tool_name, tool_result, kb_snippets) -> str:
         import json as _json
@@ -356,7 +373,16 @@ class OllamaProvider(BaseLLMProvider):
         ctx = _json.dumps({"tool": tool_name, "result": tool_result,
                            "kb": [s["text"][:400] for s in kb_snippets[:3]]})
         return await self._chat([
-            {"role": "system", "content": "You are a helpful support agent. Answer concisely using tool results and KB context."},
+            {"role": "system", "content": (
+                "You are a helpful support agent. Answer the user's question in 1-3 short "
+                "sentences using the tool results and KB context. Rules: "
+                "(1) If a lookup says the order/ticket was NOT found, say so plainly and "
+                "suggest double-checking the ID (format ORD-1234; demo orders ORD-1001 to ORD-1005). "
+                "(2) Never mention JSON field names like 'found', 'id', or 'tool_result', and never "
+                "quote raw tool output. (3) For knowledge-base questions, ground your answer in the "
+                "provided excerpts and cite them ONLY with their exact [DOC-ID] tags "
+                "(e.g. [TRB-001]) — never invent document IDs, and never add URLs or links."
+            )},
             {"role": "user", "content": f"Question: {message}\n\nContext:\n{ctx}"},
         ])
 
@@ -364,7 +390,7 @@ class OllamaProvider(BaseLLMProvider):
         import httpx
 
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
+            async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
                 resp = await client.get(f"{self.base_url}/api/tags")
                 resp.raise_for_status()
                 return True, "reachable"

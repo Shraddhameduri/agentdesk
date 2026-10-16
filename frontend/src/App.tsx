@@ -22,7 +22,13 @@ interface Message {
   provider?: string
 }
 
-const DEMO = (import.meta as any).env?.VITE_DEMO_MODE === 'true'
+function providerBadge(providerInfo: { provider?: string; model?: string }) {
+  const { provider, model } = providerInfo
+  if (provider === 'ollama') return <span className="demo-badge">LIVE — Ollama {model || ''} (local model)</span>
+  if (provider === 'fake') return <span className="demo-badge">DEMO MODE — deterministic fake LLM, no API key needed</span>
+  if (provider) return <span className="demo-badge">via {provider} provider</span>
+  return null
+}
 
 export default function App() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('copilot-key') || 'demo-key')
@@ -34,6 +40,11 @@ export default function App() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { refreshApprovals() }, [])
+  useEffect(() => {
+    // Badge reflects the actual live provider reported by /ready — never hardcoded.
+    fetch('/ready').then(r => r.json()).then(setProviderInfo).catch(() => {})
+  }, [])
+  const [providerInfo, setProviderInfo] = useState<{ provider?: string; model?: string }>({})
 
   const headers = () => ({ 'X-API-Key': apiKey, 'Content-Type': 'application/json' })
 
@@ -108,7 +119,7 @@ export default function App() {
     <div className="app">
       <header>
         <h1>🤖 Agentic Support Copilot</h1>
-        {DEMO && <span className="demo-badge">DEMO MODE — deterministic fake LLM, no API key needed</span>}
+        {providerBadge(providerInfo)}
         <div className="keyrow">
           <label>API key <input value={apiKey} onChange={e => setApiKey(e.target.value)} /></label>
         </div>
