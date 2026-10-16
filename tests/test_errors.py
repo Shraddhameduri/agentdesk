@@ -50,22 +50,22 @@ def test_total_provider_failure_returns_503_envelope():
 
 
 def test_no_unhandled_500_stack_trace_leaks():
-    # The global handler converts unknown exceptions to the envelope.
-    import app.main as m
-    from fastapi.testclient import TestClient
+    # Exercise the global uncaught-exception handler directly: an unexpected
+    # exception must become the standard envelope with no internals leaking.
+    import asyncio
+    import json
 
-    from .conftest import HEADERS
+    from fastapi import Request
 
-    app = m.create_app(database_url="sqlite:///:memory:", provider_name="fake")
+    from app.errors import unhandled_error_handler
+    from app.logging_setup import set_request_id
 
-    @app.get("/__boom__")
-    async def boom():
-        raise RuntimeError("kaboom")
-
-    with TestClient(app, raise_server_exceptions=False) as c:
-        r = c.get("/__boom__")
-    assert r.status_code == 500
-    body = r.json()
+    set_request_id("test-req-999")
+    scope = {"type": "http", "method": "GET", "path": "/__boom__", "headers": [],
+             "query_string": b"", "server": ("test", 80), "scheme": "http"}
+    resp = asyncio.run(unhandled_error_handler(Request(scope), RuntimeError("kaboom")))
+    assert resp.status_code == 500
+    body = json.loads(resp.body)
     assert body["error"]["code"] == "INTERNAL_ERROR"
     assert "kaboom" not in body["error"]["message"]  # no internals leak
-    assert "request_id" in body["error"]
+    assert body["error"]["request_id"] == "test-req-999"

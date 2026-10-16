@@ -2,7 +2,7 @@
 
 An AI support agent that doesn't just chat — it **acts** via tools, with a **human-in-the-loop approval gate** on every write action. Ask "Where is my order ORD-1002?" and it looks it up. Ask for a refund and it *drafts* the ticket, waits for your approval, and only then executes.
 
-**Live demo:** https://451d70d20b1fc7.lhr.life
+**Live demo:** https://bd5fe888665027.lhr.life
 *(public URL via localhost.run tunnel; rotates on reconnect — current URL is always in `~/workspace/your_files/agentic-support-copilot-url.txt`)*
 
 > **Demo mode:** the public demo runs on a deterministic built-in provider (no API key, no external calls).
@@ -165,7 +165,7 @@ Test suite: **38 passed** (`pytest tests/`) — routing, tools, approval flow, R
 
 ## Deployment
 
-- **Live demo:** https://451d70d20b1fc7.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
+- **Live demo:** https://bd5fe888665027.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
 - Runs from one process: `uvicorn app.main:app` serves the React build from `/` and the API under `/api`.
 - `DEMO_MODE=true` forces the fake provider for the public demo; the UI shows a "DEMO MODE" badge.
 - `docker-compose.yml` adds Postgres 16 + pgvector for the production RAG path (server-side vector search replaces the in-memory index — same `Retriever` interface).
