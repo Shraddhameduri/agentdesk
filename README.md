@@ -42,7 +42,8 @@ flowchart TD
 
 - **LLM provider abstraction** — `fake` (deterministic, offline), `openai` (Chat Completions, httpx), `ollama` (local `/api/chat`). Swap via `LLM_PROVIDER`.
 - **RAG knowledge base** — 6 seeded support docs → sliding-window chunks → embeddings (fake 128-dim hash embeddings offline, OpenAI embeddings in prod) → cosine retrieval with citations.
-- **Tools** — `order_lookup`, `ticket_status`, `kb_search` (read, instant); `ticket_create` (write, **always gated**). Ticket-intent routing covers open/create/file/raise/submit + `a (support) ticket` in any wording ("Create a support ticket: …", "I want to open a support ticket for ORD-1002"), while order/policy questions and ticket-status checks never stage writes.
+- **Tools** — `order_lookup`, `ticket_status`, `kb_search` (read, instant); `ticket_create` (write, **always gated**). Ticket-intent routing covers open/create/file/raise/submit + `a (support) ticket` in any wording ("Create a support ticket: …", "I want to open a support ticket for ORD-1002"), while order/policy questions and ticket-status checks never stage writes. Order IDs accept loose forms (`ord 234`, `ord5678`, `ORD-1234`) and are normalized to `ORD-XXXX`; a "where is my order" question with no ID asks for the ID instead of guessing; return/refund intent with an order ID looks up the order and adds the 30-day returns note.
+- **KB answers** — snippets are truncated at sentence boundaries (never mid-word/mid-sentence) and the agent prefers the single best-matching snippet unless the runner-up is on the same topic, so answers stay focused with clean `[DOC-ID]` citations.
 - **Human-in-the-loop** — write actions create `pending` approvals; `approve` executes exactly once, `reject` discards; double-resolve → `409`; UI shows an approval panel.
 - **Streaming** — SSE endpoint with meta/token/done events.
 - **Auth** — `X-API-Key` header on all `/api` routes (`/health`, `/ready` public).

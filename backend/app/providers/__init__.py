@@ -12,6 +12,19 @@ import re
 from dataclasses import dataclass, field
 
 ORDER_ID_RE = re.compile(r"\bORD-\d{4}\b", re.IGNORECASE)
+# Loose order-ID forms a visitor might type: "ord 234", "ord234", "ORD-5678",
+# "ord5678". Normalized to the canonical ORD-XXXX form.
+LOOSE_ORDER_ID_RE = re.compile(r"\bORD[-\s]?(\d{3,4})\b", re.IGNORECASE)
+# "where is my order/package/shipment" with no order ID — a status question
+# that needs the order number first, NOT a knowledge-base dump.
+WHERE_IS_MY_ORDER_RE = re.compile(
+    r"\bwhere(?:'s| is)?\s+(?:is\s+)?my\s+(order|package|shipment)\b",
+    re.IGNORECASE,
+)
+# Return/refund intent phrasings (bare "return"/"refund", not refund-action
+# verbs like "I want a refund" — those are write intents and stage a ticket).
+RETURN_INTENT_RE = re.compile(r"\b(return|refund|send(?:ing)? back)\b", re.IGNORECASE)
+DEMO_ORDER_RANGE = "ORD-1001 to ORD-1005"
 TICKET_ID_RE = re.compile(r"\bTKT-\d{4}\b", re.IGNORECASE)
 # Ticket-creation phrasings: the action verb may be separated from "ticket" by
 # filler words ("create a SUPPORT ticket", "open a ticket for my damaged
@@ -49,6 +62,38 @@ class Plan:
     needs_approval: bool = False
     reply_draft: str = ""             # used for general chat (no tool)
     routed: bool = False              # True when a tool path was chosen
+
+
+def normalize_order_id(message: str) -> str | None:
+    """Extract a (possibly loosely written) order ID and return it canonicalized.
+
+    Accepts "ord 234", "ord234", "ORD-5678", "ord5678" and returns the canonical
+    "ORD-XXXX" form, zero-padded to four digits. Returns None when no order
+    ID is present.
+    """
+    m = LOOSE_ORDER_ID_RE.search(message)
+    if not m:
+        return None
+    return f"ORD-{m.group(1).zfill(4)}"
+
+
+def truncate_at_sentence(text: str, max_len: int = 300) -> str:
+    """Shorten a KB snippet to <= max_len chars, always ending at a sentence
+    boundary. Never cuts mid-word; falls back to the previous sentence end
+    even if it is much shorter than max_len."""
+    text = " ".join(text.split())
+    if len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    # Prefer a real sentence boundary (., !, ?) — take the LAST one in the
+    # window so we keep as much as possible.
+    boundaries = [cut.rfind(". "), cut.rfind("! "), cut.rfind("? ")]
+    idx = max(boundaries)
+    if idx >= int(max_len * 0.4):
+        return cut[: idx + 1].strip()
+    # No sentence boundary in the useful window: cut at the last word break.
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > 0 else cut).strip()
 
 
 class BaseLLMProvider:
@@ -99,10 +144,7 @@ class FakeLLMProvider(BaseLLMProvider):
             or any(w in text for w in REFUND_ACTION_VERBS)
         )
         if strong_write or (weak_write and not is_question):
-            order_id = None
-            m2 = ORDER_ID_RE.search(message.upper())
-            if m2:
-                order_id = m2.group(0).upper()
+            order_id = normalize_order_id(message)
             return Plan(
                 tool="ticket_create",
                 args={
@@ -115,9 +157,24 @@ class FakeLLMProvider(BaseLLMProvider):
                 routed=True,
             )
 
-        m = ORDER_ID_RE.search(message.upper())
-        if m and any(w in text for w in ("order", "track", "status", "where", "package", "shipment", "shipped", "delivery")):
-            return Plan(tool="order_lookup", args={"order_id": m.group(0).upper()}, routed=True)
+        # A "where is my order/package" question with no order ID cannot be
+        # answered — ask for the ID instead of dumping KB docs. (A how-to
+        # question like "How do I track my package?" still goes to KB.)
+        loose_id = normalize_order_id(message)
+        if loose_id is None and WHERE_IS_MY_ORDER_RE.search(message):
+            return Plan(
+                reply_draft=(
+                    "I'd be happy to check that — could you share your order ID? "
+                    "It's the 4-digit number in your confirmation email (format ORD-1234; "
+                    f"demo orders run {DEMO_ORDER_RANGE})."
+                ),
+                routed=False,
+            )
+
+        # Any ID-shaped message routes to order lookup — never to the KB.
+        # Unknown IDs get the clear not-found reply in compose().
+        if loose_id:
+            return Plan(tool="order_lookup", args={"order_id": loose_id}, routed=True)
 
         m = TICKET_ID_RE.search(message.upper())
         if m:
@@ -148,12 +205,23 @@ class FakeLLMProvider(BaseLLMProvider):
         if tool_name == "order_lookup" and tool_result:
             if tool_result.get("found"):
                 total = tool_result["total_cents"] / 100
-                return (
+                reply = (
                     f"Order {tool_result['id']} ({tool_result['item']}) is "
                     f"**{tool_result['status'].replace('_', ' ')}** — total ${total:,.2f}. "
                     f"Tracking: {tool_result['tracking_number'] or 'not yet assigned'}."
                 )
-            return f"I couldn't find order {tool_result.get('id')}. Double-check the order number (format ORD-1234)."
+                # Return/refund intent WITH a found order: answer the lookup
+                # first, then add the one-line returns note (RET-001 policy).
+                if RETURN_INTENT_RE.search(message):
+                    reply += (
+                        " Reminder: most items can be returned within 30 days "
+                        "of delivery for a full refund [RET-001]."
+                    )
+                return reply
+            return (
+                f"I couldn't find order {tool_result.get('id')}. "
+                f"Double-check the order number (format ORD-1234 — demo orders run {DEMO_ORDER_RANGE})."
+            )
         if tool_name == "ticket_status" and tool_result:
             if tool_result.get("found"):
                 return (
@@ -162,8 +230,18 @@ class FakeLLMProvider(BaseLLMProvider):
                 )
             return f"No ticket found with ID {tool_result.get('id')}."
         if kb_snippets:
-            cites = " ".join(f"[{s['doc_id']}]" for s in kb_snippets[:2])
-            body = "\n\n".join(f"> {s['text'][:300]}" for s in kb_snippets[:2])
+            # Keep the single best snippet unless the second is clearly on the
+            # same topic (same doc, or a close retrieval score) — otherwise two
+            # unrelated chunks get stitched into a rambling answer.
+            shown = kb_snippets[:1]
+            if len(kb_snippets) > 1:
+                first, second = kb_snippets[0], kb_snippets[1]
+                same_doc = second["doc_id"] == first["doc_id"]
+                close_score = second.get("score", 0) >= 0.9 * first.get("score", 1)
+                if same_doc or close_score:
+                    shown = kb_snippets[:2]
+            cites = " ".join(f"[{s['doc_id']}]" for s in shown)
+            body = "\n\n".join(f"> {truncate_at_sentence(s['text'])}" for s in shown)
             return f"Based on our support docs {cites}:\n\n{body}"
         return "Thanks — I can look up orders, check ticket status, search the knowledge base, or draft a ticket for your approval. What do you need?"
 
