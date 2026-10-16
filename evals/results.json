@@ -1,0 +1,7 @@
+{
+  "n_cases": 24,
+  "tool_call_accuracy": 1.0,
+  "approval_gate_compliance": 1.0,
+  "groundedness": 1.0,
+  "failures": []
+}

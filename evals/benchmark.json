@@ -1,0 +1,24 @@
+{
+  "requests": 60,
+  "chat_latency_ms": {
+    "p50": 21.68,
+    "p95": 49.24,
+    "mean": 24.83,
+    "max": 54.31
+  },
+  "kb_search_cold_ms": 15.32,
+  "kb_search_warm_p50_ms": 4.62,
+  "cache_stats": {
+    "embeddings": {
+      "hits": 0,
+      "misses": 9,
+      "size": 9
+    },
+    "retrieval": {
+      "hits": 34,
+      "misses": 3,
+      "size": 3
+    }
+  },
+  "provider": "fake"
+}

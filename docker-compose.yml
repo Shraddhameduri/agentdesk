@@ -1,0 +1,37 @@
+# Full stack: Postgres + pgvector for the production RAG path, API, frontend build.
+# The API defaults to the fake provider (offline demo). Set LLM_PROVIDER=openai
+# and OPENAI_API_KEY for the real path.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+      POSTGRES_DB: copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      API_KEY: ${API_KEY:-demo-key}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DATABASE_URL: postgresql+psycopg2://copilot:copilot@db:5432/copilot
+      DEMO_MODE: ${DEMO_MODE:-true}
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
