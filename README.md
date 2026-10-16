@@ -180,7 +180,3 @@ Test suite: **63 passed** (`pytest tests/`) — routing, tools, approval flow, R
 - **pgvector path is configured, not load-tested.** The compose file wires Postgres+pgvector; the in-memory retriever is what CI and the demo exercise.
 - **Auth is a shared API key**, not per-user JWT — fine for a demo, not for multi-tenant prod.
 - **No persistence of provider conversation memory beyond 10 messages** per session (by design, keeps context small).
-
-## Resume highlights
-
-See [RESUME_BULLETS.md](RESUME_BULLETS.md) for copy-paste bullets (all metrics verified from this build).
