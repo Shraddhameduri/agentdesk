@@ -13,22 +13,22 @@ An AI support agent that doesn't just chat — it **acts** via tools, with a **h
 
 ```mermaid
 flowchart TD
-    UI[React + TS chat UI] -->|SSE / JSON| API[FastAPI]
-    API --> AUTH[X-API-Key auth]
-    API --> WF{Agent state machine}
-    WF -->|plan| P[LLM provider\nfake · openai · ollama]
+    UI["React + TS chat UI"] -->|SSE / JSON| API["FastAPI"]
+    API --> AUTH["X-API-Key auth"]
+    API --> WF{"Agent state machine"}
+    WF -->|plan| P["LLM provider<br/>fake - openai - ollama"]
     P -->|retry + backoff| P
-    P -.->|all fail| FB[fallback: fake provider]
-    WF --> READ[read tools\norder_lookup · ticket_status · kb_search]
-    WF --> GATE{Human approval gate}
-    GATE -->|pending| APR[(approvals table)]
-    GATE -->|approved| WRITE[ticket_create executes]
-    GATE -->|rejected| DROP[discarded, nothing created]
-    READ --> RAG[RAG retriever\nchunking + embeddings + cache]
-    RAG --> VEC[(in-memory index\nor pgvector)]
-    WRITE --> DB[(SQLite / Postgres)]
-    API --> SSE[SSE streaming]
-    API --> ERR[error envelope +\nrequest-id logging]
+    P -.->|all fail| FB["fallback: fake provider"]
+    WF --> READ["read tools<br/>order_lookup - ticket_status - kb_search"]
+    WF --> GATE{"Human approval gate"}
+    GATE -->|pending| APR[("approvals table")]
+    GATE -->|approved| WRITE["ticket_create executes"]
+    GATE -->|rejected| DROP["discarded, nothing created"]
+    READ --> RAG["RAG retriever<br/>chunking + embeddings + cache"]
+    RAG --> VEC[("in-memory index or pgvector")]
+    WRITE --> DB[("SQLite / Postgres")]
+    API --> SSE["SSE streaming"]
+    API --> ERR["error envelope + request-id logging"]
 ```
 
 **Request flow** for one chat turn (hybrid planning — deliberate, honest design):
