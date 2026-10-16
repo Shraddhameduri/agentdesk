@@ -30,6 +30,19 @@ URL=$(grep -aoE "https?://[a-zA-Z0-9.-]+\.lhr\.life" /tmp/copilot_localrun.log 2
 if [ -n "$URL" ]; then
   echo "$URL" > "$URL_FILE"
   echo "$(date -u +%FT%TZ) ok $URL" >> "$LOG"
+  # Keep the README's Live demo link in sync so it never goes stale:
+  # if the tunnel rotated, rewrite the demo URL in README.md, commit, push.
+  README_URL=$(grep -aoE "https?://[a-zA-Z0-9.-]+\.lhr\.life" "$REPO/README.md" 2>/dev/null | head -1)
+  if [ -n "$README_URL" ] && [ "$README_URL" != "$URL" ]; then
+    sed -i -E "s|https://[a-z0-9]+\.lhr\.life|$URL|g" "$REPO/README.md"
+    if git -C "$REPO" add README.md >/dev/null 2>&1 && \
+       git -C "$REPO" commit -q -m "Update live demo URL" >/dev/null 2>&1 && \
+       git -C "$REPO" push -q origin HEAD >/dev/null 2>&1; then
+      echo "$(date -u +%FT%TZ) readme synced to $URL" >> "$LOG"
+    else
+      echo "$(date -u +%FT%TZ) WARN readme sync failed" >> "$LOG"
+    fi
+  fi
 else
   echo "$(date -u +%FT%TZ) FAIL no URL in tunnel log" >> "$LOG"
 fi
