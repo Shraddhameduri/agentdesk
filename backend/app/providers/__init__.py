@@ -13,10 +13,23 @@ from dataclasses import dataclass, field
 
 ORDER_ID_RE = re.compile(r"\bORD-\d{4}\b", re.IGNORECASE)
 TICKET_ID_RE = re.compile(r"\bTKT-\d{4}\b", re.IGNORECASE)
-WRITE_INTENTS = (
-    "open a ticket", "create a ticket", "file a ticket", "raise a ticket",
-    "open ticket", "create ticket", "file ticket",
-    "escalate", "cancel my order",
+# Ticket-creation phrasings: the action verb may be separated from "ticket" by
+# filler words ("create a SUPPORT ticket", "open a ticket for my damaged
+# order"), and "support"/"a"/"an" are optional ("file ticket", "submit ticket").
+TICKET_ACTION_RE = re.compile(
+    r"\b(open|create|file|raise|submit|start|log)\b[^.?!]{0,60}\bticket\b",
+    re.IGNORECASE,
+)
+# Request phrasings without a strong action verb ("I want/need a [support]
+# ticket ..."), excluding ticket-status questions ("... a ticket status ...").
+REQUEST_TICKET_RE = re.compile(
+    r"\b(want|need|'d like|would like)\b[^.?!]{0,40}\b(a|an|the)\s+(support\s+)?ticket\b(?!\s+status)",
+    re.IGNORECASE,
+)
+# Order-cancellation phrasings ("cancel my order", "please cancel this order").
+CANCEL_ORDER_RE = re.compile(
+    r"\bcancel\w*\b[^.?!]{0,40}\b(order|delivery|shipment)\b",
+    re.IGNORECASE,
 )
 # "refund" is a write intent only with an explicit action verb — "when will I
 # get my refund?" is a policy question, "I want a refund" is an action.
@@ -69,14 +82,23 @@ class FakeLLMProvider(BaseLLMProvider):
 
         # Write intents take precedence: a write action must ALWAYS be gated,
         # even when the message also mentions an order or ticket ID.
-        # Pure questions ("when will I get my refund?") are NOT write intents.
+        # Strong write phrasings (ticket action verbs, escalations,
+        # cancellations) stage an approval even when phrased as a question
+        # ("Can you open a ticket for me?"). Weaker request phrasings
+        # ("I want/need a ticket", "I want a refund") are only writes when
+        # NOT asked as a policy question — "when will I get my refund?" and
+        # "do I need a ticket for returns?" stay read-only KB questions.
         is_question = stripped.endswith("?") and text.startswith(QUESTION_STARTERS)
-        write_phrase = any(w in text for w in WRITE_INTENTS) or any(w in text for w in REFUND_ACTION_VERBS)
-        if write_phrase and not (is_question and not any(
-                w in text for w in ("open a ticket", "create a ticket", "file a ticket",
-                                    "raise a ticket", "open ticket", "create ticket",
-                                    "file ticket", "escalate", "cancel my order",
-                                    "want a refund", "request a refund", "need a refund"))):
+        strong_write = (
+            TICKET_ACTION_RE.search(text) is not None
+            or "escalate" in text
+            or CANCEL_ORDER_RE.search(text) is not None
+        )
+        weak_write = (
+            REQUEST_TICKET_RE.search(text) is not None
+            or any(w in text for w in REFUND_ACTION_VERBS)
+        )
+        if strong_write or (weak_write and not is_question):
             order_id = None
             m2 = ORDER_ID_RE.search(message.upper())
             if m2:
@@ -178,7 +200,9 @@ class OpenAIProvider(BaseLLMProvider):
                     "You are a support-agent planner. Reply ONLY with JSON: "
                     '{"tool": "order_lookup|ticket_status|ticket_create|kb_search|null", '
                     '"args": {...}, "needs_approval": bool}. '
-                    "ticket_create needs_approval=true. Use kb_search for policy/how-to questions."
+                    "ticket_create needs_approval=true. Treat any phrasing of opening/creating/filing/"
+                    "raising/submitting a (support) ticket as ticket_create, even with an order ID mentioned. "
+                    "Use kb_search for policy/how-to questions."
                 )},
                 *history[-6:],
                 {"role": "user", "content": message},
@@ -239,7 +263,8 @@ class OllamaProvider(BaseLLMProvider):
         raw = await self._chat([
             {"role": "system", "content": (
                 'Reply ONLY with JSON: {"tool": "order_lookup|ticket_status|ticket_create|kb_search|null", '
-                '"args": {}, "needs_approval": false}. ticket_create needs_approval=true.'
+                '"args": {}, "needs_approval": false}. ticket_create needs_approval=true. '
+                'Any "open/create/file/raise/submit a (support) ticket" phrasing is ticket_create.'
             )},
             {"role": "user", "content": message},
         ], fmt="json")

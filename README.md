@@ -42,7 +42,7 @@ flowchart TD
 
 - **LLM provider abstraction** — `fake` (deterministic, offline), `openai` (Chat Completions, httpx), `ollama` (local `/api/chat`). Swap via `LLM_PROVIDER`.
 - **RAG knowledge base** — 6 seeded support docs → sliding-window chunks → embeddings (fake 128-dim hash embeddings offline, OpenAI embeddings in prod) → cosine retrieval with citations.
-- **Tools** — `order_lookup`, `ticket_status`, `kb_search` (read, instant); `ticket_create` (write, **always gated**).
+- **Tools** — `order_lookup`, `ticket_status`, `kb_search` (read, instant); `ticket_create` (write, **always gated**). Ticket-intent routing covers open/create/file/raise/submit + `a (support) ticket` in any wording ("Create a support ticket: …", "I want to open a support ticket for ORD-1002"), while order/policy questions and ticket-status checks never stage writes.
 - **Human-in-the-loop** — write actions create `pending` approvals; `approve` executes exactly once, `reject` discards; double-resolve → `409`; UI shows an approval panel.
 - **Streaming** — SSE endpoint with meta/token/done events.
 - **Auth** — `X-API-Key` header on all `/api` routes (`/health`, `/ready` public).
