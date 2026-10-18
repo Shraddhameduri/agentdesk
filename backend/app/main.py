@@ -1,4 +1,4 @@
-"""Agentic Support Copilot API."""
+"""AgentDesk API."""
 from __future__ import annotations
 
 import json

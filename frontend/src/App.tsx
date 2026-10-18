@@ -118,7 +118,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>🤖 Agentic Support Copilot</h1>
+        <h1>🤖 AgentDesk</h1>
         {providerBadge(providerInfo)}
         <div className="keyrow">
           <label>API key <input value={apiKey} onChange={e => setApiKey(e.target.value)} /></label>

@@ -16,7 +16,7 @@ def _get_int(name: str, default: int) -> int:
 
 
 class Settings:
-    APP_NAME = _get("APP_NAME", "agentic-support-copilot")
+    APP_NAME = _get("APP_NAME", "agentdesk")
     API_KEY = _get("API_KEY", "demo-key")
     LLM_PROVIDER = _get("LLM_PROVIDER", "fake").lower()  # fake | openai | ollama
     FALLBACK_PROVIDER = "fake"

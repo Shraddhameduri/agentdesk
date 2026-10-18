@@ -1,4 +1,4 @@
-# Agentic Support Copilot
+# AgentDesk
 
 An AI support agent that doesn't just chat — it **acts** via tools, with a **human-in-the-loop approval gate** on every write action. Ask "Where is my order ORD-1002?" and it looks it up. Ask for a refund and it *drafts* the ticket, waits for your approval, and only then executes.
 
@@ -57,7 +57,7 @@ flowchart TD
 ### Local (no Docker, no keys)
 
 ```bash
-cd agentic-support-copilot
+cd agentdesk
 python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 API_KEY=demo-key LLM_PROVIDER=fake .venv/bin/python -m uvicorn app.main:app \
   --app-dir backend --host 127.0.0.1 --port 8000
