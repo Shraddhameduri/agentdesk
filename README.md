@@ -2,7 +2,7 @@
 
 An AI support agent that doesn't just chat — it **acts** via tools, with a **human-in-the-loop approval gate** on every write action. Ask "Where is my order ORD-1002?" and it looks it up. Ask for a refund and it *drafts* the ticket, waits for your approval, and only then executes.
 
-**Live demo:** https://2a4463fe431ac5.lhr.life
+**Live demo:** https://9e00952fe62631.lhr.life
 *(public URL via localhost.run tunnel; rotates on reconnect — current URL is always in `~/workspace/your_files/agentic-support-copilot-url.txt`)*
 
 > **Live provider:** the public demo runs on **Ollama `llama3.2:1b`** (free, local model — no API key, no external calls).
@@ -168,7 +168,7 @@ Test suite: **63 passed** (`pytest tests/`) — routing, tools, approval flow, R
 
 ## Deployment
 
-- **Live demo:** https://2a4463fe431ac5.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
+- **Live demo:** https://9e00952fe62631.lhr.life (localhost.run tunnel; URL rotates on reconnect, current one always in `~/workspace/your_files/agentic-support-copilot-url.txt`; a 10-min watchdog cron `copilot-tunnel-watchdog` keeps the API + tunnel alive)
 - Runs from one process: `uvicorn app.main:app` serves the React build from `/` and the API under `/api`.
 - `DEMO_MODE=false` + `LLM_PROVIDER=ollama` (model `llama3.2:1b`, the only chat model installed) on the live demo; the UI badge reads the actual provider from `/ready` and shows "LIVE — Ollama llama3.2:1b (local model)". If Ollama is unreachable, every turn degrades to the fake provider via the existing retry/fallback chain (verified: the fallback path is exercised in tests).
 - `docker-compose.yml` adds Postgres 16 + pgvector for the production RAG path (server-side vector search replaces the in-memory index — same `Retriever` interface).
