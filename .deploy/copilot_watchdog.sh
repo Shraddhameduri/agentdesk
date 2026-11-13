@@ -34,7 +34,7 @@ if [ -n "$URL" ]; then
   # if the tunnel rotated, rewrite the demo URL in README.md, commit, push.
   README_URL=$(grep -aoE "https?://[a-zA-Z0-9.-]+\.lhr\.life" "$REPO/README.md" 2>/dev/null | head -1)
   if [ -n "$README_URL" ] && [ "$README_URL" != "$URL" ]; then
-    sed -i -E "s|https://[a-z0-9]+\.lhr\.life|$URL|g" "$REPO/README.md"
+    sed -i -E "s|https://[a-z0-9.-]+\.lhr\.life|$URL|g" "$REPO/README.md"
     if git -C "$REPO" add README.md >/dev/null 2>&1 && \
        git -C "$REPO" commit -q -m "Update live demo URL" >/dev/null 2>&1 && \
        git -C "$REPO" push -q origin HEAD >/dev/null 2>&1; then
